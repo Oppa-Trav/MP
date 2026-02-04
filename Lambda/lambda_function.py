@@ -1,16 +1,36 @@
 import json
+
 from students_fetch import fetch_students
 from students_add import add_student
 from students_update import update_student
 from students_delete import delete_student
 
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": "http://localhost:3000",  # for dev
+    # you can change to "*" later if you want
     "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE"
+    "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
 }
 
+def with_cors(resp: dict):
+    # Ensure correct proxy response shape + CORS headers
+    if not isinstance(resp, dict):
+        return {
+            "statusCode": 500,
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"error": "Invalid response from handler"})
+        }
+
+    resp["headers"] = {**CORS_HEADERS, **(resp.get("headers") or {})}
+
+    # API Gateway expects body to be a string
+    if "body" in resp and not isinstance(resp["body"], str):
+        resp["body"] = json.dumps(resp["body"])
+
+    return resp
+
 def lambda_handler(event, context):
+    # Handle preflight
     if event.get("httpMethod") == "OPTIONS":
         return {"statusCode": 200, "headers": CORS_HEADERS, "body": ""}
 
@@ -32,5 +52,5 @@ def lambda_handler(event, context):
 
     return with_cors({
         "statusCode": 404,
-        "body": json.dumps({"error": "Not found"})
+        "body": json.dumps({"error": "Route not found"})
     })
