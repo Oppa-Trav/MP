@@ -2,39 +2,55 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
-type Student = {
-  studentId: string;
-  name: string;
-  email: string;
-};
+type Student = { studentId: string; name: string; email: string };
 
-const API_BASE = "https://mtb2dyjd62.execute-api.us-east-1.amazonaws.com/default";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ??
+  "https://mtb2dyjd62.execute-api.us-east-1.amazonaws.com/default";
 
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
+// TODO: Replace this after you upload to S3
+const LOGO_URL = "https://student-manager-assets.s3.us-east-1.amazonaws.com/icon.png"; 
+
+function classNames(...c: Array<string | false | null | undefined>) {
+  return c.filter(Boolean).join(" ");
 }
 
-export default function Page() {
+export default function StudentsPage() {
+  const endpointStudents = useMemo(() => `${API_BASE}/students`, []);
+  const shortEndpoint = useMemo(() => {
+    const pretty = endpointStudents.replace("https://", "");
+    return pretty.length > 52 ? `${pretty.slice(0, 52)}…` : pretty;
+  }, [endpointStudents]);
+
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null); // which action is running
-  const [message, setMessage] = useState<string>("");
-  const [error, setError] = useState<string>("");
+  const [busy, setBusy] = useState<"add" | "update" | "delete" | null>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  // Add form
+  // Search
+  const [query, setQuery] = useState("");
+
+  const filteredStudents = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter((s) =>
+      `${s.studentId} ${s.name} ${s.email}`.toLowerCase().includes(q)
+    );
+  }, [students, query]);
+
+  // Add
   const [addId, setAddId] = useState("");
   const [addName, setAddName] = useState("");
   const [addEmail, setAddEmail] = useState("");
 
-  // Update form
+  // Update
   const [updId, setUpdId] = useState("");
   const [updName, setUpdName] = useState("");
   const [updEmail, setUpdEmail] = useState("");
 
   // Delete
   const [delId, setDelId] = useState("");
-
-  const endpointStudents = useMemo(() => `${API_BASE}/students`, []);
 
   async function fetchStudents() {
     setError("");
@@ -47,7 +63,6 @@ export default function Page() {
       setStudents(data);
       setMessage(`Loaded ${data.length} student(s).`);
     } catch (e: any) {
-      console.error(e);
       setError(e?.message || "Failed to load students.");
     } finally {
       setLoading(false);
@@ -67,7 +82,6 @@ export default function Page() {
       if (!addId.trim() || !addName.trim() || !addEmail.trim()) {
         throw new Error("Add: studentId, name, and email are required.");
       }
-
       const res = await fetch(endpointStudents, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -77,17 +91,15 @@ export default function Page() {
           email: addEmail.trim(),
         }),
       });
-
       const text = await res.text();
       if (!res.ok) throw new Error(`Add failed (HTTP ${res.status}): ${text}`);
 
-      setMessage("Student added.");
       setAddId("");
       setAddName("");
       setAddEmail("");
+      setMessage("Student added.");
       await fetchStudents();
     } catch (e: any) {
-      console.error(e);
       setError(e?.message || "Failed to add student.");
     } finally {
       setBusy(null);
@@ -104,24 +116,26 @@ export default function Page() {
         throw new Error("Update: provide at least name or email.");
       }
 
-      const res = await fetch(`${endpointStudents}/${encodeURIComponent(updId.trim())}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(updName.trim() ? { name: updName.trim() } : {}),
-          ...(updEmail.trim() ? { email: updEmail.trim() } : {}),
-        }),
-      });
+      const res = await fetch(
+        `${endpointStudents}/${encodeURIComponent(updId.trim())}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(updName.trim() ? { name: updName.trim() } : {}),
+            ...(updEmail.trim() ? { email: updEmail.trim() } : {}),
+          }),
+        }
+      );
 
       const text = await res.text();
       if (!res.ok) throw new Error(`Update failed (HTTP ${res.status}): ${text}`);
 
-      setMessage("Student updated.");
       setUpdName("");
       setUpdEmail("");
+      setMessage("Student updated.");
       await fetchStudents();
     } catch (e: any) {
-      console.error(e);
       setError(e?.message || "Failed to update student.");
     } finally {
       setBusy(null);
@@ -136,18 +150,21 @@ export default function Page() {
     try {
       if (!targetId) throw new Error("Delete: studentId is required.");
 
-      const res = await fetch(`${endpointStudents}/${encodeURIComponent(targetId)}`, {
-        method: "DELETE",
-      });
+      const ok = confirm(`Delete student "${targetId}"? This cannot be undone.`);
+      if (!ok) return;
+
+      const res = await fetch(
+        `${endpointStudents}/${encodeURIComponent(targetId)}`,
+        { method: "DELETE" }
+      );
 
       const text = await res.text();
       if (!res.ok) throw new Error(`Delete failed (HTTP ${res.status}): ${text}`);
 
-      setMessage(`Deleted ${targetId}.`);
       if (!id) setDelId("");
+      setMessage(`Deleted ${targetId}.`);
       await fetchStudents();
     } catch (e: any) {
-      console.error(e);
       setError(e?.message || "Failed to delete student.");
     } finally {
       setBusy(null);
@@ -158,404 +175,334 @@ export default function Page() {
     setUpdId(s.studentId);
     setUpdName(s.name);
     setUpdEmail(s.email);
-    setMessage("Loaded student into Update form.");
+    setMessage("Loaded into Update form.");
     setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
-    <main style={styles.page}>
-      <header style={styles.header}>
-        <div>
-          <h1 style={styles.h1}>Students Manager</h1>
-          <p style={styles.sub}>
-            Connected to <span style={styles.mono}>{endpointStudents}</span>
-          </p>
-        </div>
+    <div className="min-h-screen bg-slate-50">
+      {/* Top bar */}
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-3">
+            {LOGO_URL ? (
+              <img
+                src={LOGO_URL}
+                alt="Logo"
+                className="h-10 w-10 rounded-xl border border-slate-200 bg-white object-cover"
+              />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700">
+                SM
+              </div>
+            )}
 
-        <div style={styles.headerActions}>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                Students Manager
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Automated Web Application Deployment • AWS + IaC
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Connected to{" "}
+                <span
+                  title={endpointStudents}
+                  className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700"
+                >
+                  {shortEndpoint}
+                </span>
+              </p>
+            </div>
+          </div>
+
           <button
             onClick={fetchStudents}
             disabled={loading || !!busy}
-            className={cx("btn", "primary")}
-            style={buttonStyle("primary")}
+            className={classNames(
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold",
+              "bg-slate-900 text-white shadow-sm hover:bg-slate-800",
+              "disabled:cursor-not-allowed disabled:opacity-50"
+            )}
           >
             {loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </header>
 
-      {(message || error) && (
-        <div
-          style={{
-            ...styles.alert,
-            ...(error ? styles.alertError : styles.alertOk),
-          }}
-        >
-          <strong>{error ? "Error" : "Info"}:</strong>{" "}
-          <span style={{ marginLeft: 8 }}>{error || message}</span>
-        </div>
-      )}
-
-      <section style={styles.grid}>
-        {/* Add */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <h2 style={styles.h2}>Add Student (POST)</h2>
-            <span style={styles.badge}>/students</span>
-          </div>
-
-          <div style={styles.formGrid}>
-            <label style={styles.label}>
-              Student ID
-              <input
-                style={styles.input}
-                value={addId}
-                onChange={(e) => setAddId(e.target.value)}
-                placeholder="e.g. 2304259A"
-              />
-            </label>
-
-            <label style={styles.label}>
-              Name
-              <input
-                style={styles.input}
-                value={addName}
-                onChange={(e) => setAddName(e.target.value)}
-                placeholder="e.g. Isaac Tan"
-              />
-            </label>
-
-            <label style={styles.label}>
-              Email
-              <input
-                style={styles.input}
-                value={addEmail}
-                onChange={(e) => setAddEmail(e.target.value)}
-                placeholder="e.g. 2304259A@student.tp.edu.sg"
-              />
-            </label>
-          </div>
-
-          <button
-            onClick={addStudent}
-            disabled={busy === "add"}
-            style={buttonStyle("primary")}
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        {/* Alerts */}
+        {(message || error) && (
+          <div
+            className={classNames(
+              "mb-6 rounded-2xl border px-4 py-3 text-sm",
+              error
+                ? "border-rose-200 bg-rose-50 text-rose-800"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            )}
           >
-            {busy === "add" ? "Adding…" : "Add Student"}
-          </button>
-        </div>
+            <span className="font-semibold">{error ? "Error:" : "Info:"}</span>{" "}
+            {error || message}
+          </div>
+        )}
 
-        {/* Update */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <h2 style={styles.h2}>Update Student (PUT)</h2>
-            <span style={styles.badge}>/students/&lt;studentId&gt;</span>
+        {/* Action cards */}
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {/* Add */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">Add Student</h2>
+              <span className="rounded-full bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">
+                POST /students
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <Field label="Student ID">
+                <input
+                  className="input"
+                  value={addId}
+                  onChange={(e) => setAddId(e.target.value)}
+                  placeholder="e.g. 2400123A"
+                />
+              </Field>
+              <Field label="Name">
+                <input
+                  className="input"
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  placeholder="e.g. Amelia Koh"
+                />
+              </Field>
+              <Field label="Email">
+                <input
+                  className="input"
+                  value={addEmail}
+                  onChange={(e) => setAddEmail(e.target.value)}
+                  placeholder="e.g. 2400123A@student.tp.edu.sg"
+                />
+              </Field>
+
+              <button
+                onClick={addStudent}
+                disabled={busy === "add"}
+                className={classNames(
+                  "mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold",
+                  "bg-slate-900 text-white hover:bg-slate-800",
+                  "disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                {busy === "add" ? "Adding…" : "Add Student"}
+              </button>
+            </div>
           </div>
 
-          <div style={styles.formGrid}>
-            <label style={styles.label}>
-              Student ID (required)
-              <input
-                style={styles.input}
-                value={updId}
-                onChange={(e) => setUpdId(e.target.value)}
-                placeholder="e.g. 2304259A"
-              />
-            </label>
+          {/* Update */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">Update Student</h2>
+              <span className="rounded-full bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">
+                PUT /students/&lt;id&gt;
+              </span>
+            </div>
 
-            <label style={styles.label}>
-              Name (optional)
-              <input
-                style={styles.input}
-                value={updName}
-                onChange={(e) => setUpdName(e.target.value)}
-                placeholder="New name"
-              />
-            </label>
+            <div className="mt-4 space-y-3">
+              <Field label="Student ID (required)">
+                <input
+                  className="input"
+                  value={updId}
+                  onChange={(e) => setUpdId(e.target.value)}
+                  placeholder="e.g. 2400456B"
+                />
+              </Field>
+              <Field label="Name (optional)">
+                <input
+                  className="input"
+                  value={updName}
+                  onChange={(e) => setUpdName(e.target.value)}
+                  placeholder="New name"
+                />
+              </Field>
+              <Field label="Email (optional)">
+                <input
+                  className="input"
+                  value={updEmail}
+                  onChange={(e) => setUpdEmail(e.target.value)}
+                  placeholder="New email"
+                />
+              </Field>
 
-            <label style={styles.label}>
-              Email (optional)
-              <input
-                style={styles.input}
-                value={updEmail}
-                onChange={(e) => setUpdEmail(e.target.value)}
-                placeholder="New email"
-              />
-            </label>
+              <button
+                onClick={updateStudent}
+                disabled={busy === "update"}
+                className={classNames(
+                  "mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold",
+                  "bg-blue-600 text-white hover:bg-blue-500",
+                  "disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                {busy === "update" ? "Updating…" : "Update Student"}
+              </button>
+
+              <p className="text-xs text-slate-500">
+                Tip: click <span className="font-semibold">Edit</span> in the table to load
+                a student here.
+              </p>
+            </div>
           </div>
 
-          <button
-            onClick={updateStudent}
-            disabled={busy === "update"}
-            style={buttonStyle("secondary")}
-          >
-            {busy === "update" ? "Updating…" : "Update Student"}
-          </button>
+          {/* Delete */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">Delete Student</h2>
+              <span className="rounded-full bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">
+                DELETE /students/&lt;id&gt;
+              </span>
+            </div>
 
-          <p style={styles.help}>
-            Tip: click a row’s <strong>Edit</strong> button to load data here.
-          </p>
-        </div>
+            <div className="mt-4 space-y-3">
+              <Field label="Student ID">
+                <input
+                  className="input"
+                  value={delId}
+                  onChange={(e) => setDelId(e.target.value)}
+                  placeholder="e.g. 2400999D"
+                />
+              </Field>
 
-        {/* Delete */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <h2 style={styles.h2}>Delete Student (DELETE)</h2>
-            <span style={styles.badge}>/students/&lt;studentId&gt;</span>
+              <button
+                onClick={() => deleteStudent()}
+                disabled={busy === "delete"}
+                className={classNames(
+                  "mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold",
+                  "bg-rose-600 text-white hover:bg-rose-500",
+                  "disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                {busy === "delete" ? "Deleting…" : "Delete Student"}
+              </button>
+
+              <p className="text-xs text-slate-500">
+                You will be asked to confirm before deletion.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Table */}
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">All Students</h3>
+              <p className="mt-1 text-xs text-slate-500">GET /students</p>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                className="input w-full sm:w-64"
+                placeholder="Search students…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <span className="rounded-full bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600">
+                {filteredStudents.length} record(s)
+              </span>
+            </div>
           </div>
 
-          <label style={styles.label}>
-            Student ID
-            <input
-              style={styles.input}
-              value={delId}
-              onChange={(e) => setDelId(e.target.value)}
-              placeholder="e.g. 2304259A"
-            />
-          </label>
-
-          <button
-            onClick={() => deleteStudent()}
-            disabled={busy === "delete"}
-            style={buttonStyle("danger")}
-          >
-            {busy === "delete" ? "Deleting…" : "Delete Student"}
-          </button>
-
-          <p style={styles.help}>
-            Or use the <strong>Delete</strong> button in the table.
-          </p>
-        </div>
-      </section>
-
-      {/* Table */}
-      <section style={styles.card}>
-        <div style={styles.cardHeader}>
-          <h2 style={styles.h2}>All Students (GET)</h2>
-          <span style={styles.badge}>/students</span>
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Student ID</th>
-                <th style={styles.th}>Name</th>
-                <th style={styles.th}>Email</th>
-                <th style={styles.th}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.length === 0 && !loading ? (
-                <tr>
-                  <td style={styles.td} colSpan={4}>
-                    No students found.
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr className="text-left text-xs font-semibold text-slate-600">
+                  <th className="px-5 py-3">Student ID</th>
+                  <th className="px-5 py-3">Name</th>
+                  <th className="px-5 py-3">Email</th>
+                  <th className="px-5 py-3">Actions</th>
                 </tr>
-              ) : (
-                students.map((s) => (
-                  <tr key={s.studentId}>
-                    <td style={styles.tdMono}>{s.studentId}</td>
-                    <td style={styles.td}>{s.name}</td>
-                    <td style={styles.td}>{s.email}</td>
-                    <td style={styles.td}>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button
-                          onClick={() => fillUpdateFromRow(s)}
-                          style={buttonStyle("ghost")}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deleteStudent(s.studentId)}
-                          disabled={busy === "delete"}
-                          style={buttonStyle("dangerGhost")}
-                        >
-                          Delete
-                        </button>
-                      </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredStudents.length === 0 && !loading ? (
+                  <tr>
+                    <td className="px-5 py-4 text-sm text-slate-500" colSpan={4}>
+                      No matching students.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filteredStudents.map((s) => (
+                    <tr key={s.studentId} className="hover:bg-slate-50">
+                      <td className="px-5 py-4 font-mono text-sm text-slate-900">
+                        {s.studentId}
+                      </td>
+                      <td className="px-5 py-4 text-sm text-slate-900">{s.name}</td>
+                      <td className="px-5 py-4 text-sm text-slate-700">{s.email}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => fillUpdateFromRow(s)}
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteStudent(s.studentId)}
+                            disabled={busy === "delete"}
+                            className="rounded-xl border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-        <p style={styles.footerNote}>
-          Note: this page is a simple API tester for your serverless backend.
-        </p>
-      </section>
-    </main>
+          <div className="px-5 py-4 text-xs text-slate-500">
+            Showing <span className="font-semibold">{filteredStudents.length}</span> of{" "}
+            <span className="font-semibold">{students.length}</span> student(s).
+          </div>
+        </section>
+
+        <footer className="mx-auto mt-8 max-w-6xl px-1 pb-10 text-xs text-slate-400">
+          v1.0 • Environment: {process.env.NODE_ENV} • Next.js + AWS (API Gateway, Lambda,
+          DynamoDB) • Containerized with Docker
+        </footer>
+      </main>
+
+      {/* Helper input style */}
+      <style jsx global>{`
+        .input {
+          width: 100%;
+          border-radius: 0.75rem;
+          border: 1px solid rgb(226 232 240);
+          padding: 0.6rem 0.75rem;
+          font-size: 0.875rem;
+          outline: none;
+        }
+        .input:focus {
+          border-color: rgb(148 163 184);
+          box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.25);
+        }
+      `}</style>
+    </div>
   );
 }
 
-/** Inline styles (simple, no Tailwind needed) */
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    padding: 24,
-    maxWidth: 1100,
-    margin: "0 auto",
-    fontFamily:
-      'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"',
-    color: "#111827",
-  },
-  header: {
-    display: "flex",
-    gap: 16,
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    flexWrap: "wrap",
-    marginBottom: 16,
-  },
-  headerActions: { display: "flex", gap: 10 },
-  h1: { fontSize: 34, margin: 0, letterSpacing: -0.5 },
-  sub: { margin: "6px 0 0", color: "#6B7280" },
-  mono: {
-    fontFamily:
-      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-    fontSize: 12,
-    background: "#F3F4F6",
-    padding: "2px 6px",
-    borderRadius: 6,
-  },
-  alert: {
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "1px solid",
-    marginBottom: 18,
-  },
-  alertOk: {
-    background: "#ECFDF5",
-    borderColor: "#A7F3D0",
-    color: "#065F46",
-  },
-  alertError: {
-    background: "#FEF2F2",
-    borderColor: "#FECACA",
-    color: "#991B1B",
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: 16,
-    marginBottom: 16,
-  },
-  card: {
-    background: "#FFFFFF",
-    border: "1px solid #E5E7EB",
-    borderRadius: 16,
-    padding: 16,
-    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-  },
-  cardHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 12,
-  },
-  h2: { fontSize: 16, margin: 0 },
-  badge: {
-    fontSize: 12,
-    background: "#F3F4F6",
-    padding: "4px 8px",
-    borderRadius: 999,
-    color: "#374151",
-    fontFamily:
-      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-  },
-  label: {
-    display: "grid",
-    gap: 6,
-    fontSize: 13,
-    color: "#374151",
-  },
-  input: {
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid #D1D5DB",
-    outline: "none",
-    fontSize: 14,
-  },
-  formGrid: {
-    display: "grid",
-    gap: 12,
-    marginBottom: 12,
-  },
-  help: {
-    marginTop: 10,
-    marginBottom: 0,
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "separate",
-    borderSpacing: 0,
-    overflow: "hidden",
-    borderRadius: 12,
-    border: "1px solid #E5E7EB",
-  },
-  th: {
-    textAlign: "left",
-    fontSize: 12,
-    padding: "10px 12px",
-    background: "#F9FAFB",
-    borderBottom: "1px solid #E5E7EB",
-    color: "#374151",
-  },
-  td: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #F3F4F6",
-    fontSize: 14,
-    verticalAlign: "top",
-  },
-  tdMono: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #F3F4F6",
-    fontSize: 13,
-    fontFamily:
-      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-  },
-  footerNote: {
-    marginTop: 12,
-    marginBottom: 0,
-    fontSize: 12,
-    color: "#6B7280",
-  },
-};
-
-function buttonStyle(kind: "primary" | "secondary" | "danger" | "ghost" | "dangerGhost") {
-  const base: React.CSSProperties = {
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid transparent",
-    cursor: "pointer",
-    fontSize: 14,
-    fontWeight: 600,
-  };
-
-  switch (kind) {
-    case "primary":
-      return { ...base, background: "#111827", color: "white" };
-    case "secondary":
-      return { ...base, background: "#2563EB", color: "white" };
-    case "danger":
-      return { ...base, background: "#DC2626", color: "white" };
-    case "ghost":
-      return {
-        ...base,
-        background: "#FFFFFF",
-        borderColor: "#D1D5DB",
-        color: "#111827",
-      };
-    case "dangerGhost":
-      return {
-        ...base,
-        background: "#FFFFFF",
-        borderColor: "#FCA5A5",
-        color: "#B91C1C",
-      };
-  }
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-semibold text-slate-600">{label}</span>
+      <div className="mt-1">{children}</div>
+    </label>
+  );
 }

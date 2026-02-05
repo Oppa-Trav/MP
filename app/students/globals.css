@@ -1,3 +1,10 @@
+@import "tailwindcss";
+
+/* your existing css below */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* @import "tailwindcss";
 
 :root {
