@@ -104,7 +104,7 @@ Resources:
           PortMappings:
             - ContainerPort: !Ref ContainerPort
               Protocol: tcp
-
+ 
   Service:
     Type: AWS::ECS::Service
     DependsOn: Listener
