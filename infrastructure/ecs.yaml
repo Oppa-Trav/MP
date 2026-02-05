@@ -1,22 +1,27 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Student Manager - ECS Fargate + ALB (existing VPC/subnets)
+Description: Student Manager - ECS Fargate + ALB (existing VPC/subnets, no IAM create)
 
 Parameters:
   ImageUri:
     Type: String
     Description: ECR image URI pushed by GitHub Actions
+
+  TaskExecutionRoleArn:
+    Type: String
+    Description: Existing IAM role ARN for ECS task execution (lab-provided)
+
   VpcId:
     Type: AWS::EC2::VPC::Id
+
   PublicSubnet1:
     Type: AWS::EC2::Subnet::Id
+
   PublicSubnet2:
     Type: AWS::EC2::Subnet::Id
+
   ContainerPort:
     Type: Number
     Default: 3000
-  TaskExecutionRoleArn:
-    Type: String
-    Description: Exisitng IAM role ARN of the ECS Task Execution Role
 
 Resources:
   Cluster:
@@ -49,7 +54,6 @@ Resources:
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: student-manager-alb
       Scheme: internet-facing
       Type: application
       SecurityGroups: [!Ref AlbSecurityGroup]
@@ -58,7 +62,6 @@ Resources:
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: student-manager-tg
       VpcId: !Ref VpcId
       Port: !Ref ContainerPort
       Protocol: HTTP
@@ -85,7 +88,7 @@ Resources:
       Cpu: "256"
       Memory: "512"
       NetworkMode: awsvpc
-      ExecutionRoleArn: !GetAtt TaskExecutionRoleArn
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn
       ContainerDefinitions:
         - Name: student-manager
           Image: !Ref ImageUri
@@ -93,7 +96,7 @@ Resources:
           PortMappings:
             - ContainerPort: !Ref ContainerPort
               Protocol: tcp
- 
+
   Service:
     Type: AWS::ECS::Service
     DependsOn: Listener
