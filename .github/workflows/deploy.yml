@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  CF_STACK_NAME: student-manager-stack
-  CF_TEMPLATE_PATH: infrastructure/ecs.yaml
+  CF_STACK_NAME: student-manager-stack-vpc
+  CF_TEMPLATE_PATH: infrastructure/ecs-with-vpc.yaml
 
   # IMPORTANT: set this to your exact ECR repo name (you said it has namespace "travis")
   ECR_REPOSITORY: travis/student-manager
@@ -61,17 +61,14 @@ jobs:
       - name: Deploy CloudFormation stack (ECS + ALB)
         run: |
           aws cloudformation deploy \
-            --stack-name "${CF_STACK_NAME}" \
-            --template-file "${CF_TEMPLATE_PATH}" \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
-            --parameter-overrides \
-              ImageUri=${{ steps.build.outputs.image_uri }} \
-              VpcId=${{ secrets.VPC_ID }} \
-              PublicSubnet1=${{ secrets.PUBLIC_SUBNET_1 }} \
-              PublicSubnet2=${{ secrets.PUBLIC_SUBNET_2 }} \
-              ContainerPort=${CONTAINER_PORT} \
-              TaskExecutionRoleArn=${{ secrets.ECS_EXEC_ROLE_ARN }} \
-            --no-fail-on-empty-changeset
+          --template-file "${CF_TEMPLATE_PATH}" \
+          --stack-name "${CF_STACK_NAME}" \
+          --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+          --parameter-overrides \
+            ImageUri=${{ steps.build.outputs.image_uri }} \
+            TaskExecutionRoleArn=${{ secrets.ECS_EXEC_ROLE_ARN }} \
+            ContainerPort=3000 \
+          --no-fail-on-empty-changeset
 
       - name: Dump CloudFormation events on failure
         if: failure()
