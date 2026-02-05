@@ -2,14 +2,16 @@ name: CI/CD - Build -> Push to ECR -> Deploy ECS (CloudFormation)
 
 on:
   push:
-    branches: ["main"]
+    branches: ["master"]
   workflow_dispatch:
 
 env:
   CF_STACK_NAME: student-manager-stack
   CF_TEMPLATE_PATH: infrastructure/ecs.yaml
-  # CHANGE to your ECR repo name (you said it has "travis/...")
+
+  # IMPORTANT: set this to your exact ECR repo name (you said it has namespace "travis")
   ECR_REPOSITORY: travis/student-manager
+
   CONTAINER_PORT: "3000"
 
 permissions:
@@ -31,7 +33,7 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Login to ECR
+      - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
@@ -40,27 +42,42 @@ jobs:
           aws ecr describe-repositories --repository-names "${ECR_REPOSITORY}" >/dev/null 2>&1 || \
           aws ecr create-repository --repository-name "${ECR_REPOSITORY}" >/dev/null
 
-      - name: Build and push image
+      - name: Build and push image to ECR
         id: build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           IMAGE_URI=${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
+
+          echo "Building image: ${IMAGE_URI}"
           docker build -t "${IMAGE_URI}" .
+
+          echo "Pushing image to ECR..."
           docker push "${IMAGE_URI}"
+
           echo "image_uri=${IMAGE_URI}" >> $GITHUB_OUTPUT
 
-      - name: CloudFormation deploy (ECS + ALB)
+      - name: Deploy CloudFormation stack (ECS + ALB)
         run: |
           aws cloudformation deploy \
             --stack-name "${CF_STACK_NAME}" \
             --template-file "${CF_TEMPLATE_PATH}" \
-            --capabilities CAPABILITY_NAMED_IAM CAPABILITY_IAM \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --parameter-overrides \
               ImageUri=${{ steps.build.outputs.image_uri }} \
               VpcId=${{ secrets.VPC_ID }} \
               PublicSubnet1=${{ secrets.PUBLIC_SUBNET_1 }} \
               PublicSubnet2=${{ secrets.PUBLIC_SUBNET_2 }} \
               ContainerPort=${CONTAINER_PORT} \
+              TaskExecutionRoleArn=${{ secrets.ECS_EXEC_ROLE_ARN }} \
             --no-fail-on-empty-changeset
+
+      - name: Dump CloudFormation events on failure
+        if: failure()
+        run: |
+          aws cloudformation describe-stack-events \
+            --stack-name "${CF_STACK_NAME}" \
+            --region "${{ secrets.AWS_REGION }}" \
+            --query "StackEvents[0:25].[Timestamp,ResourceStatus,LogicalResourceId,ResourceStatusReason]" \
+            --output table
