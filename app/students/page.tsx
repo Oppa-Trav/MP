@@ -8,7 +8,6 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ??
   "https://mtb2dyjd62.execute-api.us-east-1.amazonaws.com/default";
 
-// TODO: Replace this after you upload to S3
 const LOGO_URL = "https://student-manager-assets.s3.us-east-1.amazonaws.com/icon.png"; 
 
 function classNames(...c: Array<string | false | null | undefined>) {
